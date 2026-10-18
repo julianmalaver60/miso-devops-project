@@ -1,116 +1,243 @@
-# Despliegue en AWS (RDS + Elastic Beanstalk)
 
-Responsable: **Julián**. Esta guía es el punto de partida; quien despliegue debe ajustarla con
-lo que realmente hizo (y las capturas van al documento PDF de la entrega, ítem 1).
+# Configuración en AWS
 
-> Lo marcado *(verificado)* se comprobó en la documentación de AWS o en pruebas locales el
-> 2026-10-12. El resto es la configuración recomendada: confirmar en la consola.
+Este documento registra los principales valores utilizados para desplegar la API del proyecto en AWS.
 
-## Antes de empezar
+## Configuración general
 
-- Cuenta del grupo, región **us-east-1 (N. Virginia)**. Entrar con el usuario IAM propio, no root.
-- Los recursos cuestan dinero desde que se crean (cuenta de pago, sin créditos). Ver
-  [Al terminar](#al-terminar).
-
-## 1. Base de datos (RDS PostgreSQL)
-
-**Crearla aparte, no desde el asistente de Beanstalk.** Si la RDS se crea dentro del ambiente,
-al terminar el ambiente se borra la base; separada, el ambiente se puede recrear sin perder datos.
-
-| Opción | Valor recomendado |
+| Parámetro | Valor |
 |---|---|
-| Motor | PostgreSQL 17 (probado localmente con 17 *(verificado)*) |
-| Plantilla | *Free tier* / *Dev/Test* |
-| Clase | `db.t4g.micro` o `db.t3.micro` |
-| Almacenamiento | 20 GB gp3, sin autoescalado |
-| Disponibilidad | Single-AZ |
-| Nombre de la base inicial | `blacklist` |
-| Acceso público | No |
-| Grupo de seguridad | Permitir 5432 **solo** desde el grupo de seguridad de las instancias de Beanstalk |
+| Región | `us-east-1` |
+| Región AWS | N. Virginia |
+| Arquitectura | RDS PostgreSQL + Elastic Beanstalk |
+| VPC | `vpc-02dea8dca0fb53125` |
+| Tipo de ambiente | Load Balanced |
+| Acceso a la aplicación | Público mediante Application Load Balancer |
+| Acceso a PostgreSQL | Privado |
 
-Guardar el endpoint, usuario y contraseña: van como variables de entorno en Beanstalk, **nunca
-en el repo**.
+## Amazon RDS
 
-## 2. Paquete de la aplicación
+| Parámetro | Valor utilizado |
+|---|---|
+| Servicio | Amazon RDS |
+| Motor | PostgreSQL |
+| Versión | PostgreSQL 17 |
+| Identificador de instancia | `database-1` |
+| Nombre de base de datos | `blacklist` |
+| Usuario maestro | `postgres` |
+| Puerto | `5432` |
+| Clase de instancia | `db.t3.micro` |
+| Tipo de despliegue | Single-AZ |
+| Almacenamiento | `20 GiB` |
+| Tipo de almacenamiento | `gp3` |
+| Storage autoscaling | Deshabilitado |
+| VPC | `vpc-02dea8dca0fb53125` |
+| DB Subnet Group | Default VPC subnet group |
+| Publicly accessible | No |
+| RDS Proxy | No |
+| Authentication | Password authentication |
+| Automated backups | Deshabilitados para el ambiente temporal |
+| Deletion protection | Deshabilitado |
+| Enhanced Monitoring | Deshabilitado |
+| Database Insights | Standard |
+| DevOps Guru | Deshabilitado |
+| Security Group | `blacklist-rds-sg` |
+| Security Group ID | `sg-088ea20a07a7dcd60` |
 
-Desde la raíz del repo, con los cambios ya en un commit:
+### Endpoint actual de RDS
 
-```bash
-git archive -o blacklist-v1.0.0.zip HEAD
+```text
+database-1.cqpqamiuedzv.us-east-1.rds.amazonaws.com
 ```
 
-El `.zip` lleva el código en la raíz (no dentro de una carpeta), que es lo que Beanstalk
-espera. Sale sin `.venv/`, `.env` ni `instance/`.
+### Regla de entrada de RDS
 
-## 3. Ambiente de Elastic Beanstalk
+| Tipo | Protocolo | Puerto | Origen |
+|---|---|---:|---|
+| PostgreSQL | TCP | `5432` | Security Group de las instancias EC2 de Elastic Beanstalk |
 
-| Opción | Valor |
+Durante este despliegue, el Security Group utilizado por las instancias de Beanstalk fue:
+
+```text
+sg-07289a380c456abdc
+```
+
+La regla de entrada de RDS quedó:
+
+```text
+TCP 5432
+Source: sg-07289a380c456abdc
+```
+
+No se requiere acceso público a PostgreSQL.
+
+## Elastic Beanstalk
+
+| Parámetro | Valor utilizado |
 |---|---|
-| Tipo | *Web server environment* |
-| Plataforma | **Python 3.12 running on 64bit Amazon Linux 2023** *(verificado: plataforma soportada)* |
-| Código | Subir el `.zip` del paso 2 |
-| Tipo de ambiente | *Load balanced* (las estrategias de despliegue necesitan varias instancias) |
-| Capacidad | Mín. **3**, máx. **6** instancias (recomendación del enunciado) |
+| Servicio | AWS Elastic Beanstalk |
+| Application name | `miso-devops-project` |
+| Environment name | `Miso-devops-project-env` |
+| Environment type | Web server environment |
+| Environment mode | Load balanced |
+| Región | `us-east-1` |
+| Plataforma | Python 3.12 |
+| Sistema operativo | 64bit Amazon Linux 2023 |
+| Platform branch | Python 3.12 running on 64bit Amazon Linux 2023 |
+| Platform version observada | `4.13.10` |
+| Arquitectura EC2 | `x86_64` |
 | Tipo de instancia | `t3.micro` |
+| Capacidad mínima | `3` |
+| Capacidad máxima | `6` |
 | Balanceador | Application Load Balancer |
+| Load Balancer visibility | Public |
+| Listener | HTTP |
+| Listener port | `80` |
+| Health reporting | Enhanced |
+| Managed platform updates | Deshabilitados |
+| Deployment policy inicial | All at once |
 
-No hace falta `Procfile`: Beanstalk usa Gunicorn y busca el objeto `application` en
-`application.py` *(verificado)*.
+## Networking de Elastic Beanstalk
 
-### Variables de entorno
-
-*Configuration → Updates, monitoring, and logging → Environment properties*:
-
-| Variable | Valor |
+| Parámetro | Valor |
 |---|---|
-| `JWT_SECRET_KEY` | Cadena aleatoria de 32+ caracteres: `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
-| `RDS_HOSTNAME` | Endpoint de la RDS |
-| `RDS_PORT` | `5432` |
-| `RDS_DB_NAME` | `blacklist` |
-| `RDS_USERNAME` | Usuario maestro de la RDS |
-| `RDS_PASSWORD` | Contraseña de la RDS |
+| VPC | `vpc-02dea8dca0fb53125` |
+| Instance public IP | Habilitada |
+| Load Balancer | Público |
+| IP address type | IPv4 |
+| EC2 Security Group | `sg-07289a380c456abdc` |
+| Load Balancer Security Group | `sg-03ff038c7b151934a` |
 
-La app crea la tabla sola al arrancar, y tolera que varias instancias arranquen a la vez
-*(verificado con 4 procesos de Gunicorn contra PostgreSQL)*.
+Las instancias fueron distribuidas entre varias subnets de la VPC para permitir que Elastic Beanstalk y el Application Load Balancer trabajaran en múltiples Availability Zones.
 
-### Health check
+## Security Groups
 
-*Configuration → Load balancer → Processes → default*: **Health check path = `/health`**.
+### Security Group de RDS
 
-`/health` no pide token ni consulta la base, y responde la versión y el host de la instancia:
+```text
+Name: blacklist-rds-sg
+ID: sg-088ea20a07a7dcd60
+VPC: vpc-02dea8dca0fb53125
+```
+
+Regla principal:
+
+| Direction | Type | Protocol | Port | Source |
+|---|---|---|---:|---|
+| Inbound | PostgreSQL | TCP | `5432` | `sg-07289a380c456abdc` |
+
+### Security Group de las instancias Elastic Beanstalk
+
+```text
+sg-07289a380c456abdc
+```
+
+Este grupo es creado y administrado por el stack de Elastic Beanstalk.
+
+Su función es controlar el tráfico recibido por las instancias EC2 que ejecutan Gunicorn y la aplicación Flask.
+
+### Security Group del Application Load Balancer
+
+```text
+sg-03ff038c7b151934a
+```
+
+Este Security Group pertenece al Application Load Balancer creado automáticamente por Elastic Beanstalk.
+
+## Auto Scaling
+
+| Parámetro | Valor |
+|---|---:|
+| Minimum instances | `3` |
+| Maximum instances | `6` |
+| Instance type | `t3.micro` |
+| Architecture | `x86_64` |
+
+Elastic Beanstalk administra automáticamente el Auto Scaling Group y mantiene el número de instancias dentro de este rango.
+
+La configuración de tres instancias mínimas permite observar el comportamiento de las estrategias de despliegue solicitadas para la entrega.
+
+## Application Load Balancer
+
+| Parámetro | Valor |
+|---|---|
+| Tipo | Application Load Balancer |
+| Visibility | Public |
+| IP type | IPv4 |
+| Listener | HTTP |
+| Listener port | `80` |
+| Target | Instancias EC2 de Elastic Beanstalk |
+| Health Check | `/health` |
+
+## Health Check
+
+| Parámetro | Valor |
+|---|---|
+| Protocol | HTTP |
+| Port | `80` |
+| Path | `/health` |
+| Success code | `200` |
+| Interval | `15 seconds` |
+| Timeout | `5 seconds` |
+| Healthy threshold | `3` |
+| Unhealthy threshold | `5` |
+| Deregistration delay | `20 seconds` |
+
+Respuesta esperada:
 
 ```json
-{"status": "ok", "version": "1.0.0", "host": "ip-172-31-5-10.ec2.internal"}
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "host": "<ec2-hostname>"
+}
 ```
 
-## 4. Verificar
+## Variables de entorno
 
-```bash
-curl http://<url-del-ambiente>/health
+| Variable | Valor/configuración |
+|---|---|
+| `RDS_HOSTNAME` | Endpoint actual de RDS |
+| `RDS_PORT` | `5432` |
+| `RDS_DB_NAME` | `blacklist` |
+| `RDS_USERNAME` | `postgres` |
+| `RDS_PASSWORD` | Valor privado |
+| `JWT_SECRET_KEY` | Valor privado |
+
+Los valores de `RDS_PASSWORD` y `JWT_SECRET_KEY` no deben quedar documentados ni almacenados en Git.
+
+## Flujo de red
+
+```text
+Internet
+   |
+   v
+Application Load Balancer
+   |
+   | HTTP :80
+   v
+Elastic Beanstalk
+EC2 instances
+   |
+   | PostgreSQL TCP :5432
+   v
+Amazon RDS
+PostgreSQL
 ```
 
-Luego, con Postman (colección en [`postman/`](../postman/)), el POST y el GET con el token.
+La base de datos no recibe tráfico directamente desde Internet.
 
-### Generar el token para Postman
+El Security Group de RDS únicamente autoriza conexiones provenientes del Security Group de las instancias EC2 de Elastic Beanstalk.
 
-El token debe firmarse con **la misma** `JWT_SECRET_KEY` que tiene Beanstalk:
+## Estrategias de despliegue
 
-```bash
-JWT_SECRET_KEY='<la de Beanstalk>' flask --app application generar-token
-```
+El ambiente fue dimensionado con mínimo tres instancias y máximo seis para ejecutar las cuatro estrategias solicitadas:
 
-Pasárselo a David por privado. No va en el repo.
+| Estrategia | Comportamiento esperado |
+|---|---|
+| All at once | Actualiza todas las instancias simultáneamente |
+| Rolling | Actualiza las instancias por lotes |
+| Rolling with additional batch | Agrega capacidad temporal antes de actualizar cada lote |
+| Immutable | Crea un nuevo conjunto de instancias y reemplaza el anterior después de validar el despliegue |
 
-## Capturas para el documento (ítem 1, 10 %)
-
-- [ ] a. Configuración de la RDS (motor, clase, red, grupo de seguridad).
-- [ ] b. Configuración del ambiente de Beanstalk (plataforma, capacidad, variables sin mostrar valores secretos).
-- [ ] c. Configuración del health check (`/health`) y el ambiente en estado *Ok*.
-
-## Al terminar
-
-Cuando no se esté usando por días, o al terminar la entrega **después de la calificación**:
-
-- [ ] Beanstalk → *Actions* → **Terminate environment**.
-- [ ] RDS → **Delete** (decidir si con snapshot).
-- [ ] EC2: confirmar que no quedan instancias, balanceadores, volúmenes ni IPs elásticas.
+No es necesario reconstruir el ambiente entre estrategias. Elastic Beanstalk administra cada actualización de acuerdo con la política seleccionada.
