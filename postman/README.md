@@ -1,47 +1,68 @@
-# Postman
+# Postman — Entrega 1
 
-Responsable: **David**. Aquí van la colección y el environment exportados en JSON (requisito
-del enunciado), más la URL de la documentación publicada.
+Responsable: **David Indaburu**. Colección con **21 escenarios**, **70 aserciones** y un ejemplo de solicitud/respuesta por escenario.
 
 ## Archivos
 
 | Archivo | Contenido |
 |---|---|
-| `blacklist-api.postman_collection.json` | Colección con los escenarios de prueba |
-| `blacklist-aws.postman_environment.json` | Environment con `base_url` y `token` |
+| [blacklist-api.postman_collection.json](blacklist-api.postman_collection.json) | Colección v2.1: endpoints, ejemplos, datos dinámicos y pruebas |
+| [blacklist-aws.postman_environment.json](blacklist-aws.postman_environment.json) | Environment `Blacklist API — AWS`: URL del servicio y token vacío |
 
-Documentación publicada: *(pegar la URL aquí y en el documento de la entrega)*
+## Importación y autenticación
 
-## Variables del environment
+1. En Postman Desktop, usar **Import** y seleccionar ambos archivos JSON.
+2. Seleccionar el environment **Blacklist API — AWS**.
+3. Configurar únicamente el valor local de `token` con una referencia al JWT guardado en Postman Vault (`{{vault:nombre_del_secreto}}`). Mantener vacío su valor compartido.
+4. La colección utiliza `Authorization: Bearer {{token}}`. `/health` y los escenarios sin token tienen autorización desactivada; los escenarios de JWT inválido generan su propio valor de prueba.
 
-| Variable | Valor inicial (el que se exporta) | Valor actual (solo local) |
+| Variable | Alcance | Valor exportado |
 |---|---|---|
-| `base_url` | `http://<url-del-ambiente>` | igual |
-| `token` | **vacío** | el token real |
+| `base_url` | Environment | `http://miso-devops-project-env.eba-j23tens3.us-east-1.elasticbeanstalk.com` |
+| `token` | Environment | Vacío |
+| `app_uuid`, `blocked_reason` | Colección | Datos de ejemplo |
+| Emails y motivos de 255/256 caracteres | Colección | Ejemplos; los scripts generan los valores de ejecución |
 
-El repo es público: **el token real nunca va en el valor inicial**. Revisar el JSON antes de
-subirlo.
+El JWT real no se incluye en los JSON ni en este repositorio. Cada integrante configura su acceso local. Marcar una variable como sensible oculta su visualización, pero no reemplaza la necesidad de mantener vacío el valor compartido/exportado.
 
-Autorización de la colección: *Bearer Token* = `{{token}}`, heredada por todas las solicitudes.
+## Ejecución
 
-## Escenarios sugeridos
+Abrir la colección y seleccionar **Run → Functional → Local**:
 
-Son los mismos casos que cubren las pruebas automáticas (`tests/test_blacklists.py`); ver
-[`docs/api.md`](../docs/api.md) para cuerpos y respuestas.
+- Environment: **Blacklist API — AWS**.
+- Solicitudes: las 21, en orden del 01 al 21.
+- Iteraciones: **1**. Pausa: **0 ms**. Sin archivo de datos.
+- **Persist responses for a session**: activado.
+- **Keep variable values**: desactivado.
 
-| # | Solicitud | Esperado |
-|---|---|---|
-| 1 | `GET /health` sin token | 200 |
-| 2 | `POST /blacklists` completo | 201 |
-| 3 | `POST /blacklists` sin `blocked_reason` | 201 |
-| 4 | `POST /blacklists` con un email ya agregado | 409 |
-| 5 | `POST /blacklists` con email inválido | 400 |
-| 6 | `POST /blacklists` con `app_uuid` inválido | 400 |
-| 7 | `POST /blacklists` con `blocked_reason` de 256+ caracteres | 400 |
-| 8 | `POST /blacklists` sin token | 401 |
-| 9 | `GET /blacklists/<email agregado>` | 200, `is_blacklisted: true` y motivo |
-| 10 | `GET /blacklists/<email nuevo>` | 200, `is_blacklisted: false` |
-| 11 | `GET /blacklists/<email>` sin token | 401 |
+Cada ejecución completa crea tres registros. Los correos usan un UUID aleatorio para permitir nuevas ejecuciones sin colisiones; las consultas y el caso duplicado reutilizan los valores creados antes en la misma corrida.
 
-Para que los escenarios se puedan repetir, usar un email distinto por corrida en el 2, p. ej.
-`prueba-{{$timestamp}}@ejemplo.com`, guardándolo en una variable para el 4 y el 9.
+## Escenarios
+
+| N.º | Escenario | Método | HTTP esperado |
+|---|---|---|---|
+| 01 | Health check sin autenticación | `GET` | 200 |
+| 02 | Crear email con motivo | `POST` | 201 |
+| 03 | Consultar email registrado | `GET` | 200 |
+| 04 | Duplicado con mayúsculas y otra app | `POST` | 409 |
+| 05 | Consultar con mayúsculas y conservar motivo | `GET` | 200 |
+| 06 | Crear email sin motivo | `POST` | 201 |
+| 07 | Consultar email sin motivo | `GET` | 200 |
+| 08 | Crear motivo de exactamente 255 caracteres | `POST` | 201 |
+| 09 | Consultar email inexistente | `GET` | 200 |
+| 10 | Email inválido | `POST` | 400 |
+| 11 | app_uuid inválido | `POST` | 400 |
+| 12 | Motivo de 256 caracteres | `POST` | 400 |
+| 13 | Falta email | `POST` | 400 |
+| 14 | Falta app_uuid | `POST` | 400 |
+| 15 | Faltan ambos campos obligatorios | `POST` | 400 |
+| 16 | Cuerpo no JSON | `POST` | 400 |
+| 17 | JSON de tipo arreglo | `POST` | 400 |
+| 18 | POST sin token | `POST` | 401 |
+| 19 | GET sin token | `GET` | 401 |
+| 20 | POST con JWT inválido | `POST` | 401 |
+| 21 | GET con JWT inválido | `GET` | 401 |
+
+## Formato de entrega
+
+La colección se entrega en formato **Postman Collection v2.1** y el environment en JSON. Ambos archivos se encuentran en esta carpeta. El environment contiene `base_url` y `token`; el valor exportado de `token` está vacío. Las variables de datos de prueba pertenecen a la colección.
