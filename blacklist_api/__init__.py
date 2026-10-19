@@ -14,7 +14,7 @@ from .resources import BlacklistCollection, BlacklistItem, Health
 
 # Subir este número en cada versión que se despliegue: /health lo muestra y así se ve
 # qué instancias ya tienen la versión nueva durante una estrategia de despliegue.
-__version__ = "1.0.0"
+__version__ = "1.0.4" 
 
 
 def create_app(config_class=Config):
