@@ -1,0 +1,33 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+  pre_build:
+    commands:
+      - echo "Instalando dependencias"
+      - pip install -r requirements-dev.txt
+  build:
+    commands:
+      - echo "Ejecutando pruebas unitarias"
+      - python -m pytest -v --junitxml=reports/pytest.xml
+  post_build:
+    commands:
+      - echo "Pruebas superadas, generando artefacto"
+
+reports:
+  pytest-reports:
+    files:
+      - pytest.xml
+    base-directory: reports
+    file-format: JUNITXML
+
+artifacts:
+  name: blacklist-api
+  files:
+    - application.py
+    - requirements.txt
+    - 'blacklist_api/**/*'
+  exclude-paths:
+    - '**/__pycache__/**'
