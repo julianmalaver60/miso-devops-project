@@ -96,7 +96,17 @@ generarlo con la clave configurada en Beanstalk y guardarlo en el environment de
 pytest
 ```
 
-Por defecto usan SQLite en memoria. Para correrlas contra PostgreSQL real (lo que usa RDS),
+Hay un archivo por endpoint, para que se vea de un vistazo qué cubre cada uno:
+
+| Archivo | Endpoint |
+|---|---|
+| `tests/test_health.py` | `GET /health` |
+| `tests/test_post_blacklists.py` | `POST /blacklists` |
+| `tests/test_get_blacklists.py` | `GET /blacklists/<email>` |
+| `tests/test_arranque.py` | Arranque de la app (creación de tablas) |
+
+Por defecto usan SQLite en memoria, así que no necesitan un motor de base de datos: así
+corren en CodeBuild. Para correrlas contra PostgreSQL real (lo que usa RDS),
 con Docker:
 
 ```bash
@@ -104,6 +114,12 @@ docker run -d --rm --name pg-pruebas -e POSTGRES_PASSWORD=pruebas -e POSTGRES_DB
 TEST_DATABASE_URL=postgresql://postgres:pruebas@localhost:55432/blacklist pytest
 docker stop pg-pruebas
 ```
+
+## Cómo trabajamos
+
+Rama `feature/...` → pull request a `main` → **cada quien fusiona su propio PR**. Con el
+pipeline de CI (Entrega 2), cada commit a `main` dispara el build en CodeBuild: correr `pytest`
+antes de fusionar.
 
 ## Configuración
 
