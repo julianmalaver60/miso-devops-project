@@ -9,12 +9,13 @@ phases:
       - echo "Instalando dependencias"
       - pip install -r requirements-dev.txt
   build:
+    on-failure: ABORT
     commands:
       - echo "Ejecutando pruebas unitarias"
       - python -m pytest -v --junitxml=reports/pytest.xml
   post_build:
     commands:
-      - echo "Pruebas superadas, generando artefacto"
+      - if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then echo "Pruebas superadas, generando artefacto"; else echo "Pruebas fallidas, no se genera artefacto"; fi
 
 reports:
   pytest-reports:
