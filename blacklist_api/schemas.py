@@ -5,7 +5,7 @@ from .models import Blacklist
 
 
 def normalizar_email(email):
-    """Los emails se guardan y se buscan sin espacios y en minúscula."""
+    """Los emails se guardan y se buscan sin espacios y en minúscula"""
     return email.strip().lower()
 
 
