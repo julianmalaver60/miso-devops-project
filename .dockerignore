@@ -1,0 +1,14 @@
+# Solo entra a la imagen lo que copia el Dockerfile; esto evita mandar al build
+# secretos (.env), el entorno virtual y archivos pesados.
+.git
+.github
+.venv
+.env
+.pytest_cache
+**/__pycache__
+instance
+*.db
+reports
+tests
+docs
+postman
