@@ -57,7 +57,9 @@ docs/
   estrategias-despliegue.md  Cómo ejecutar y documentar las 4 estrategias
 postman/                Colección y environment de Postman exportados
 .github/                Plantilla de pull request
-requirements.txt        Dependencias de producción (las instala Beanstalk)
+Dockerfile              Imagen para Fargate (Gunicorn, puerto 5000)
+.dockerignore           Lo que no entra a la imagen (.env, .venv, pruebas, docs)
+requirements.txt        Dependencias de producción (incluye Gunicorn)
 requirements-dev.txt    Producción + herramientas de prueba
 .env.example            Variables de entorno de ejemplo
 ```
@@ -126,9 +128,68 @@ antes de fusionar.
 | Variable | Obligatoria | Uso |
 |---|---|---|
 | `JWT_SECRET_KEY` | Sí | Firma del token. La app no arranca sin ella |
-| `RDS_HOSTNAME`, `RDS_PORT`, `RDS_DB_NAME`, `RDS_USERNAME`, `RDS_PASSWORD` | En AWS | Conexión a la RDS; se ponen como propiedades del ambiente de Beanstalk |
+| `RDS_HOSTNAME`, `RDS_PORT`, `RDS_DB_NAME`, `RDS_USERNAME`, `RDS_PASSWORD` | En AWS | Conexión a la RDS. En Beanstalk, propiedades del ambiente; en Fargate, Parameter Store (ver «Contenedor») |
 | `DATABASE_URL` | No | Alternativa: URL completa de PostgreSQL (`postgresql://usuario:clave@host:5432/base`) |
 | `TEST_DATABASE_URL` | No | Base para `pytest`; sin ella, SQLite en memoria |
+
+## Contenedor (Entrega 3, AWS Fargate)
+
+La imagen corre Gunicorn con 2 workers en el puerto **5000**, con un usuario sin privilegios.
+La imagen base sale de ECR Public (`public.ecr.aws/docker/library/python:3.12-slim`) y no de
+Docker Hub, para que CodeBuild no choque con el límite de descargas anónimas de Docker Hub.
+
+Probarla en local (Git Bash, con Docker Desktop en «Engine running»):
+
+```bash
+docker build -t blacklist-api:local .
+docker run --rm -p 5000:5000 -e JWT_SECRET_KEY=<32+ caracteres> blacklist-api:local
+curl localhost:5000/health
+```
+
+Sin variables `RDS_*` usa SQLite dentro del contenedor (solo para probar). Verificado el
+2026-11-10 también contra PostgreSQL 17 con las variables `RDS_*`: `/health` 200, `POST` 201,
+`GET` encuentra el email y responde 401 sin token.
+
+### Secretos en Parameter Store
+
+La definición de tarea **no lleva valores**, solo referencias. Parámetros creados en `us-east-1`
+(copiados de las propiedades del ambiente de Beanstalk, así el token de Postman sigue valiendo):
+
+| Parámetro | Tipo |
+|---|---|
+| `/blacklist-api/JWT_SECRET_KEY` | SecureString |
+| `/blacklist-api/RDS_PASSWORD` | SecureString |
+| `/blacklist-api/RDS_HOSTNAME`, `RDS_PORT`, `RDS_DB_NAME`, `RDS_USERNAME` | String |
+
+En `taskdef.json`, dentro del contenedor:
+
+```json
+"secrets": [
+  {"name": "JWT_SECRET_KEY", "valueFrom": "arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/JWT_SECRET_KEY"},
+  {"name": "RDS_PASSWORD",   "valueFrom": "arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/RDS_PASSWORD"},
+  {"name": "RDS_HOSTNAME",   "valueFrom": "arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/RDS_HOSTNAME"},
+  {"name": "RDS_PORT",       "valueFrom": "arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/RDS_PORT"},
+  {"name": "RDS_DB_NAME",    "valueFrom": "arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/RDS_DB_NAME"},
+  {"name": "RDS_USERNAME",   "valueFrom": "arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/RDS_USERNAME"}
+]
+```
+
+El **rol de ejecución** de la tarea necesita `ssm:GetParameters` sobre
+`arn:aws:ssm:us-east-1:<cuenta>:parameter/blacklist-api/*`. Desde la consola o CLI:
+`aws ssm get-parameters-by-path --path /blacklist-api` (en Git Bash, anteponer
+`MSYS_NO_PATHCONV=1`, o convierte la ruta en una de Windows).
+
+### Ramas de demostración (escenarios fallidos del documento)
+
+| Rama | Cambio | Qué pasa en el pipeline |
+|---|---|---|
+| `demo/ci-fallido` | `blocked_reason` acepta 300 caracteres en vez de 255 (`schemas.py`) | Falla `test_post_valida_campos` en CodeBuild: no se construye imagen ni se despliega |
+| `demo/cd-fallido` | Gunicorn escucha en el puerto 8000 en vez de 5000 (`Dockerfile`) | Las pruebas pasan y la imagen llega a ECR, pero el health check del ALB (puerto 5000) falla en las tareas nuevas: CodeDeploy no pasa el tráfico y hace rollback |
+
+Uso: fusionar la rama a `main`, capturar la ejecución y revertir enseguida con un PR de
+*revert*. Con la configuración `ECSAllAtOnce` y sin hook de validación, CodeDeploy espera
+hasta **60 minutos** a que las tareas nuevas queden sanas antes de fallar
+([documentación de AWS](https://docs.aws.amazon.com/codedeploy/latest/userguide/troubleshooting-ecs.html)).
 
 ## Despliegue en Elastic Beanstalk
 
