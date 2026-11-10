@@ -27,4 +27,4 @@ USER app
 EXPOSE 5000
 
 # 2 workers alcanzan para 0,5 vCPU de Fargate. Los logs van a stdout (CloudWatch).
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--access-logfile", "-", "application:application"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-", "application:application"]
