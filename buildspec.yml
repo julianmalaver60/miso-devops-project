@@ -1,5 +1,9 @@
 version: 0.2
 
+env:
+  variables:
+    ECR_REPOSITORY: blacklist-api
+
 phases:
   install:
     runtime-versions:
@@ -8,14 +12,27 @@ phases:
     commands:
       - echo "Instalando dependencias"
       - pip install -r requirements-dev.txt
+      - ACCOUNT_ID=$(echo "$CODEBUILD_BUILD_ARN" | cut -d ':' -f 5)
+      - REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
+      - IMAGE_URI="$REGISTRY/$ECR_REPOSITORY"
+      - IMAGE_TAG=$(echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c 1-7)
+      - IMAGE_TAG=${IMAGE_TAG:-latest}
+      - echo "Iniciando sesion en ECR $REGISTRY"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
   build:
     on-failure: ABORT
     commands:
       - echo "Ejecutando pruebas unitarias"
       - python -m pytest -v --junitxml=reports/pytest.xml
+      - echo "Pruebas superadas, construyendo la imagen $IMAGE_URI:$IMAGE_TAG"
+      - docker build -t "$IMAGE_URI:$IMAGE_TAG" -t "$IMAGE_URI:latest" .
   post_build:
     commands:
-      - if [ "$CODEBUILD_BUILD_SUCCEEDING" = "1" ]; then echo "Pruebas superadas, generando artefacto"; else echo "Pruebas fallidas, no se genera artefacto"; fi
+      - echo "Publicando la imagen en ECR"
+      - docker push "$IMAGE_URI:$IMAGE_TAG"
+      - docker push "$IMAGE_URI:latest"
+      - printf '{"ImageURI":"%s"}' "$IMAGE_URI:$IMAGE_TAG" > imageDetail.json
+      - cat imageDetail.json
 
 reports:
   pytest-reports:
@@ -25,10 +42,7 @@ reports:
     file-format: JUNITXML
 
 artifacts:
-  name: blacklist-api
   files:
-    - application.py
-    - requirements.txt
-    - 'blacklist_api/**/*'
-  exclude-paths:
-    - '**/__pycache__/**'
+    - imageDetail.json
+    - appspec.json
+    - taskdef.json

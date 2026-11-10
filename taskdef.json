@@ -1,0 +1,38 @@
+{
+  "family": "blacklist-api",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512",
+  "memory": "1024",
+  "runtimePlatform": {
+    "cpuArchitecture": "X86_64",
+    "operatingSystemFamily": "LINUX"
+  },
+  "executionRoleArn": "arn:aws:iam::949867896974:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "blacklist-api",
+      "image": "<IMAGE1_NAME>",
+      "essential": true,
+      "portMappings": [
+        {"containerPort": 5000, "hostPort": 5000, "protocol": "tcp"}
+      ],
+      "secrets": [
+        {"name": "JWT_SECRET_KEY", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/JWT_SECRET_KEY"},
+        {"name": "RDS_PASSWORD", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_PASSWORD"},
+        {"name": "RDS_HOSTNAME", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_HOSTNAME"},
+        {"name": "RDS_PORT", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_PORT"},
+        {"name": "RDS_DB_NAME", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_DB_NAME"},
+        {"name": "RDS_USERNAME", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_USERNAME"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/blacklist-api",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      }
+    }
+  ]
+}
