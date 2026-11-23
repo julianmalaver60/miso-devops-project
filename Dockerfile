@@ -27,4 +27,7 @@ USER app
 EXPOSE 5000
 
 # 2 workers alcanzan para 0,5 vCPU de Fargate. Los logs van a stdout (CloudWatch).
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--access-logfile", "-", "application:application"]
+# newrelic-admin carga el agente de New Relic antes de Gunicorn. Toma su configuración de
+# NEW_RELIC_LICENSE_KEY y NEW_RELIC_APP_NAME (sin newrelic.ini); sin licencia, la app corre
+# igual y el agente no reporta.
+CMD ["newrelic-admin", "run-program", "gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--access-logfile", "-", "application:application"]

@@ -50,6 +50,7 @@ blacklist_api/
   schemas.py            Validación de entrada y serialización (Marshmallow)
   resources.py          Endpoints (Flask-RESTful)
   cli.py                Comando `generar-token`
+  observabilidad.py     Reporta a New Relic los 400, 404 y 409 como errores
 tests/                  Pruebas con pytest (SQLite en memoria o PostgreSQL)
 docs/
   api.md                Contrato del API con ejemplos
@@ -59,7 +60,7 @@ postman/                Colección y environment de Postman exportados
 .github/                Plantilla de pull request
 Dockerfile              Imagen para Fargate (Gunicorn, puerto 5000)
 .dockerignore           Lo que no entra a la imagen (.env, .venv, pruebas, docs)
-requirements.txt        Dependencias de producción (incluye Gunicorn)
+requirements.txt        Dependencias de producción (incluye Gunicorn y el agente de New Relic)
 requirements-dev.txt    Producción + herramientas de prueba
 .env.example            Variables de entorno de ejemplo
 ```
@@ -106,6 +107,7 @@ Hay un archivo por endpoint, para que se vea de un vistazo qué cubre cada uno:
 | `tests/test_post_blacklists.py` | `POST /blacklists` |
 | `tests/test_get_blacklists.py` | `GET /blacklists/<email>` |
 | `tests/test_arranque.py` | Arranque de la app (creación de tablas) |
+| `tests/test_observabilidad.py` | Qué respuestas se reportan a New Relic como error |
 
 Por defecto usan SQLite en memoria, así que no necesitan un motor de base de datos: así
 corren en CodeBuild. Para correrlas contra PostgreSQL real (lo que usa RDS),
@@ -190,6 +192,45 @@ Uso: fusionar la rama a `main`, capturar la ejecución y revertir enseguida con 
 *revert*. Con la configuración `ECSAllAtOnce` y sin hook de validación, CodeDeploy espera
 hasta **60 minutos** a que las tareas nuevas queden sanas antes de fallar
 ([documentación de AWS](https://docs.aws.amazon.com/codedeploy/latest/userguide/troubleshooting-ecs.html)).
+
+## Monitoreo con New Relic (Entrega 4)
+
+El contenedor arranca con `newrelic-admin run-program gunicorn ...`, que carga el agente de
+Python antes que la app. No hay `newrelic.ini`: el agente se configura con variables de entorno.
+
+| Variable | Desarrollo (local) | Nube (Fargate, `taskdef.json`) |
+|---|---|---|
+| `NEW_RELIC_LICENSE_KEY` | Valor de `/blacklist-api/NEW_RELIC_LICENSE_KEY` en un `.env` que no se sube | Secreto desde Parameter Store |
+| `NEW_RELIC_APP_NAME` | `blacklist-api-dev` | `blacklist-api-cloud` |
+| `NEW_RELIC_LOG` | `stdout` | `stdout` |
+
+Sin licencia la app corre igual y el agente no reporta. El agente **no se instala en Windows**
+(no tiene versión para Windows): en `requirements.txt` va con `; sys_platform != "win32"`, así
+`pip install` y `pytest` siguen funcionando en Windows. Se prueba dentro del contenedor.
+
+Probar en local (Git Bash). La licencia va **completa**: si el agente escribe
+`incorrect license key`, la del parámetro no es la clave real.
+
+```bash
+docker build -t blacklist-api .
+docker run --rm -p 5000:5000 --env-file nr.env blacklist-api   # nr.env: las variables de arriba + JWT_SECRET_KEY
+```
+
+### Qué cuenta como error en New Relic
+
+Medido el 2026-11-23 con el agente 14.3.0 (ver `tests/test_observabilidad.py`):
+
+| Respuesta | Cómo llega a Errors Inbox |
+|---|---|
+| 401 sin token o con token inválido | La registra el agente solo: Flask-JWT-Extended lanza `NoAuthorizationError` o `DecodeError` |
+| 400 datos inválidos | `SolicitudInvalida`, reportado por `observabilidad.py` |
+| 404 ruta inexistente | `RutaNoEncontrada`, reportado por `observabilidad.py` (el agente ignora el 404 por defecto) |
+| 409 email duplicado | `EmailDuplicado`, reportado por `observabilidad.py` |
+
+Sin `observabilidad.py` solo aparecerían los 401: el agente registra excepciones, y el 400 y el
+409 son respuestas normales. `GET /blacklists/<email>` nunca da 404 (un email que no está
+responde 200 con `is_blacklisted: false`); el 404 se provoca con una ruta que no existe.
+Los mensajes no llevan el email, para no mandar datos personales a New Relic.
 
 ## Despliegue en Elastic Beanstalk
 
