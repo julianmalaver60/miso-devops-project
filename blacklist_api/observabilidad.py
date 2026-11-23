@@ -40,8 +40,11 @@ def registrar_reporte_de_errores(app):
     def _reportar(respuesta):
         clase = ERRORES_POR_CODIGO.get(respuesta.status_code)
         if clase:
-            # Sin el email en el mensaje: no se manda información personal a New Relic.
-            mensaje = f"HTTP {respuesta.status_code} en {request.method} {request.url_rule or request.path}"
+            # Solo la plantilla de la ruta (/blacklists/<email>), nunca la ruta real: un 404 puede
+            # traer un email en la URL y no debe llegar a New Relic. Además, así todos los 404
+            # forman un solo grupo en Errors Inbox.
+            ruta = request.url_rule.rule if request.url_rule else "ruta desconocida"
+            mensaje = f"HTTP {respuesta.status_code} en {request.method} {ruta}"
             try:
                 raise clase(mensaje)
             except clase:
