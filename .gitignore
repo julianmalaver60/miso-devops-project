@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Variables locales con secretos (p. ej. nr.env para New Relic). Nunca al repo.
+*.env

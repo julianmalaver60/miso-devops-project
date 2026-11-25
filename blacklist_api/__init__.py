@@ -41,8 +41,10 @@ def create_app(config_class=Config):
         crear_tablas()
 
     from .cli import registrar_comandos
+    from .observabilidad import registrar_reporte_de_errores
 
     registrar_comandos(app)
+    registrar_reporte_de_errores(app)
     return app
 
 
