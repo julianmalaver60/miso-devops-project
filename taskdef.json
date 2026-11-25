@@ -17,7 +17,12 @@
       "portMappings": [
         {"containerPort": 5000, "hostPort": 5000, "protocol": "tcp"}
       ],
+      "environment": [
+        {"name": "NEW_RELIC_APP_NAME", "value": "blacklist-api-cloud"},
+        {"name": "NEW_RELIC_LOG", "value": "stdout"}
+      ],
       "secrets": [
+        {"name": "NEW_RELIC_LICENSE_KEY", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/NEW_RELIC_LICENSE_KEY"},
         {"name": "JWT_SECRET_KEY", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/JWT_SECRET_KEY"},
         {"name": "RDS_PASSWORD", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_PASSWORD"},
         {"name": "RDS_HOSTNAME", "valueFrom": "arn:aws:ssm:us-east-1:949867896974:parameter/blacklist-api/RDS_HOSTNAME"},
